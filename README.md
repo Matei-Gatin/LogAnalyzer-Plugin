@@ -48,7 +48,7 @@ Sample log files are provided in `test-logs/` directory.
 ## 🛠️ Built With
 
 - IntelliJ Platform SDK
-- Java 17
+- Java 21
 - Gradle
 
 ## 📝 Log Format Support
