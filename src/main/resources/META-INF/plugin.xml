@@ -1,15 +1,42 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
     <id>com.github.mateigatin.loganalyzerplugin</id>
-    <name>LogAnalyzer-Plugin</name>
-    <vendor>matei-gatin</vendor>
+    <name>LogAnalyzer</name>
+    <vendor email="your-email@example.com" url="https://github.com/Matei-Gatin">Matei Gatin</vendor>
+
+    <description><![CDATA[
+    Apache Log Analyzer for IntelliJ IDEA.
+
+    Analyze Apache/Nginx log files with powerful insights:
+    - Traffic patterns by hour
+    - Status code distribution
+    - Top endpoints
+    - Performance metrics
+    - Security analysis
+    - Export results to JSON
+  ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
 
     <resource-bundle>messages.MyBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="com.github.mateigatin.loganalyzerplugin.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
-        <postStartupActivity implementation="com.github.mateigatin.loganalyzerplugin.startup.MyProjectActivity" />
+        <!-- Register the tool window -->
+        <toolWindow
+                factoryClass="com.github.mateigatin.loganalyzerplugin.toolWindow.LogAnalyzerToolWindowFactory"
+                id="LogAnalyzer"
+                anchor="bottom"
+                icon="AllIcons.Toolwindows.ToolWindowMessages"/>
     </extensions>
+
+    <actions>
+        <action id="com.github.mateigatin.loganalyzerplugin.AnalyzeLogFile"
+                class="com.github.mateigatin.loganalyzerplugin.actions.AnalyzeLogFileAction"
+                text="Analyze Log File"
+                description="Analyze Apache/Nginx log file"
+                icon="AllIcons.Actions.Preview">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="first"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </action>
+    </actions>
 </idea-plugin>

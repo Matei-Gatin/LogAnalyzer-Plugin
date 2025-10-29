@@ -4,7 +4,7 @@ import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 plugins {
     id("java") // Java support
-    alias(libs.plugins.kotlin) // Kotlin support
+    // alias(libs.plugins.kotlin) // Kotlin support
     alias(libs.plugins.intelliJPlatform) // IntelliJ Platform Gradle Plugin
     alias(libs.plugins.changelog) // Gradle Changelog Plugin
     alias(libs.plugins.qodana) // Gradle Qodana Plugin
@@ -15,9 +15,21 @@ group = providers.gradleProperty("pluginGroup").get()
 version = providers.gradleProperty("pluginVersion").get()
 
 // Set the JVM language level used to build the project.
-kotlin {
-    jvmToolchain(21)
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+        vendor.set(JvmVendorSpec.ADOPTIUM)
+    }
 }
+
+//java {
+//    sourceCompatibility = JavaVersion.VERSION_21
+//    targetCompatibility = JavaVersion.VERSION_21
+//}
+
+// kotlin {
+//     jvmToolchain(21)
+// }
 
 // Configure project's dependencies
 repositories {
@@ -31,8 +43,27 @@ repositories {
 
 // Dependencies are managed with Gradle version catalog - read more: https://docs.gradle.org/current/userguide/platforms.html#sub:version-catalog
 dependencies {
-    testImplementation(libs.junit)
-    testImplementation(libs.opentest4j)
+    // testImplementation(libs.junit)
+    // testImplementation(libs.opentest4j)
+
+    // Dependencies from your Maven project
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.15.2")
+    implementation("org.slf4j:slf4j-api:2.0.9")
+    implementation("ch.qos.logback:logback-classic:1.5.13")
+
+    // Lombok for IntelliJ plugin (optional, but good to have)
+    compileOnly("org.projectlombok:lombok:1.18.42")
+    annotationProcessor("org.projectlombok:lombok:1.18.42")
+
+    // Test dependencies
+
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
+    testImplementation("org.junit.jupiter:junit-jupiter-params:5.10.0")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.0")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.0")
+    testImplementation("org.mockito:mockito-core:5.5.0")
+    testImplementation("org.mockito:mockito-junit-jupiter:5.5.0")
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
@@ -133,6 +164,38 @@ tasks {
 
     publishPlugin {
         dependsOn(patchChangelog)
+    }
+
+    // Add test configuration
+    test {
+        useJUnitPlatform()
+
+        // Exclude IntelliJ Platform tests from regular test task
+        exclude("**/*")
+
+        // Optional: better test output
+        testLogging {
+            events("passed", "skipped", "failed")
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+            showStandardStreams = false
+        }
+    }
+
+    // Create a separate task for unit tests
+    register<Test>("unitTest") {
+        useJUnitPlatform()
+
+        testClassesDirs = sourceSets.test.get().output.classesDirs
+        classpath = sourceSets.test.get().runtimeClasspath
+
+        // Only include your unit tests (not IntelliJ Platform tests)
+        include("**/analyzer/**", "**/model/**", "**/parser/**")
+
+        testLogging {
+            events("passed", "skipped", "failed")
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+            showStandardStreams = true
+        }
     }
 }
 
