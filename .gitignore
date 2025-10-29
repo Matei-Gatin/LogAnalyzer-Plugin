@@ -15,6 +15,9 @@ gradle-app.setting
 .intellijPlatform/
 out/
 
+# VS Code
+.vscode/
+
 # Kotlin
 .kotlin/
 
