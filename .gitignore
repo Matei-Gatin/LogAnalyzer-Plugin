@@ -13,6 +13,8 @@ gradle-app.setting
 *.iws
 .intellijPlatform/
 out/
+screenshots/
+.github/
 
 # VS Code
 .vscode/
