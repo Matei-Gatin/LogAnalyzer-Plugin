@@ -1,17 +1,25 @@
 package com.github.mateigatin.loganalyzerplugin.toolWindow;
 
+import com.github.mateigatin.loganalyzerplugin.export.ExportService;
 import com.github.mateigatin.loganalyzerplugin.model.AnalysisResult;
+import com.intellij.notification.NotificationGroupManager;
+import com.intellij.notification.NotificationType;
+import com.intellij.openapi.fileChooser.*;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileWrapper;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTabbedPane;
-import com.intellij.ui.components.JBTextArea;
+import com.intellij.util.ui.JBUI;
 
 
 import javax.swing.*;
 import java.awt.*;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class LogAnalyzerWindow
@@ -20,134 +28,288 @@ public class LogAnalyzerWindow
     // Key to store this window in the project's user data
     public static final Key<LogAnalyzerWindow> KEY = Key.create("LogAnalyzerWindow");
 
-    private final Project project;
-    private final JPanel mainPanel;
-    private final JBTabbedPane tabbedPane;
-    private final JLabel statusLabel;
-
     // Store text areas for each tab so we can update them
-    private JBTextArea overviewTextArea;
-    private JBTextArea trafficTextArea;
-    private JBTextArea statusCodesTextArea;
-    private JBTextArea endpointsTextArea;
-    private JBTextArea performanceTextArea;
-    private JBTextArea securityTextArea;
+    private final JPanel mainPanel;
+    private JTextArea overviewTextArea;
+    private JTextArea trafficTextArea;
+    private JTextArea statusCodesTextArea;
+    private JTextArea endpointsTextArea;
+    private JTextArea performanceTextArea;
+    private JTextArea securityTextArea;
+    private final Project project;
+
+    private Map<String, AnalysisResult> currentResults = new HashMap<>();
+    private final ExportService exportService = new ExportService();
 
     public LogAnalyzerWindow(Project project)
     {
         this.project = project;
         this.mainPanel = new JPanel(new BorderLayout());
-        this.tabbedPane = new JBTabbedPane();
-        this.statusLabel = new JLabel("Ready to analyze logs");
 
-        // Store this window instance in the project
-        project.putUserData(KEY, this);
+        // toolbar with export button
+        JPanel toolbar = createToolbar();
+        mainPanel.add(toolbar, BorderLayout.NORTH);
 
-        setupUI();
+        // Tabbed pane
+        JBTabbedPane tabbedPane = new JBTabbedPane();
+
+        // Text areas for each tab
+        overviewTextArea = createTextArea();
+        trafficTextArea = createTextArea();
+        statusCodesTextArea = createTextArea();
+        endpointsTextArea = createTextArea();
+        performanceTextArea = createTextArea();
+        securityTextArea = createTextArea();
+
+        // Add tabs with icons
+        tabbedPane.addTab("Overview", new JBScrollPane(overviewTextArea));
+        tabbedPane.addTab("Traffic by Hour", new JBScrollPane(trafficTextArea));
+        tabbedPane.addTab("Status Codes", new JBScrollPane(statusCodesTextArea));
+        tabbedPane.addTab("Top Endpoints", new JBScrollPane(endpointsTextArea));
+        tabbedPane.addTab("Performance", new JBScrollPane(performanceTextArea));
+        tabbedPane.addTab("Security", new JBScrollPane(securityTextArea));
+
+        mainPanel.add(tabbedPane, BorderLayout.CENTER);
+
+        // Show welcome message
+        showWelcomeMessage();
     }
 
-    private void setupUI()
+    private JPanel createToolbar()
     {
-        // Create text areas
-        overviewTextArea = new JBTextArea();
-        trafficTextArea = new JBTextArea();
-        statusCodesTextArea = new JBTextArea();
-        endpointsTextArea = new JBTextArea();
-        performanceTextArea = new JBTextArea();
-        securityTextArea = new JBTextArea();
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY));
 
-        // Make them all non-editable
-        overviewTextArea.setEditable(false);
-        trafficTextArea.setEditable(false);
-        statusCodesTextArea.setEditable(false);
-        endpointsTextArea.setEditable(false);
-        performanceTextArea.setEditable(false);
-        securityTextArea.setEditable(false);
+        // Export button
+        JButton exportButton = new JButton("📤 Export Report");
+        exportButton.setToolTipText("Export analysis results to HTML or JSON");
+        exportButton.addActionListener(e -> showExportDialog());
 
-        // Set initial text
-        overviewTextArea.setText("📊 Log Analyzer\n\nRight-click on a .log file and select 'Analyze Log File' to begin.\n\nSupported formats:\n- Apache Combined Log Format\n- Nginx Access Logs");
+        // Clear button
+        JButton clearButton = new JButton("🗑️ Clear");
+        clearButton.setToolTipText("Clear current analysis");
+        clearButton.addActionListener(e -> clearResults());
+
+        toolbar.add(exportButton);
+        toolbar.add(clearButton);
+
+        return toolbar;
+    }
+
+    private void showExportDialog() {
+        if (currentResults.isEmpty()) {
+            Messages.showWarningDialog(
+                    project,
+                    "No analysis results to export. Please analyze a log file first.",
+                    "No Data Available"
+            );
+            return;
+        }
+
+        // Create dialog with format selection
+        String[] options = {"HTML Report", "JSON Data", "Cancel"};
+        int choice = Messages.showDialog(
+                project,
+                "Choose export format:",
+                "Export Analysis Results",
+                options,
+                0,
+                Messages.getQuestionIcon()
+        );
+
+        if (choice == 2) return; // User cancelled
+
+        boolean exportAsHtml = (choice == 0);
+        String extension = exportAsHtml ? "html" : "json";
+        String defaultName = "log-analysis-report." + extension;
+
+        // Show file chooser
+        FileSaverDescriptor descriptor =
+                new FileSaverDescriptor(
+                        "Export Analysis Report",
+                        "Choose location to save the report",
+                        extension
+                );
+
+        FileSaverDialog dialog = FileChooserFactory.getInstance()
+                .createSaveFileDialog(descriptor, project);
+        // --> Check for method
+        VirtualFileWrapper fileWrapper = dialog.save((VirtualFile) null, defaultName);
+
+        if (fileWrapper ==  null) return;
+
+        Path outputPath = fileWrapper.getFile().toPath();
+
+        // Export in background
+        try {
+            if (exportAsHtml) {
+                exportService.exportToHtml(currentResults, outputPath);
+            } else {
+                exportService.exportToJson(currentResults, outputPath);
+            }
+
+            // Show success notification
+            NotificationGroupManager.getInstance()
+                    .getNotificationGroup("LogAnalyzer.Notifications")
+                    .createNotification(
+                            "Export Successful",
+                            "Report exported to: " + outputPath,
+                            NotificationType.INFORMATION
+                    )
+                    .notify(project);
+
+            // Ask if user wants to open the file
+            int openChoice = Messages.showYesNoDialog(
+                    project,
+                    "Export successful! Would you like to open the file?",
+                    "Export Complete",
+                    Messages.getQuestionIcon()
+            );
+
+            if (openChoice == Messages.YES) {
+                openFileInBrowser(outputPath);
+            }
+
+        } catch (IOException ex) {
+            Messages.showErrorDialog(
+                    project,
+                    "Failed to export: " + ex.getMessage(),
+                    "Export Error"
+            );
+            ex.printStackTrace();
+        }
+    }
+
+    private void openFileInBrowser(Path filePath) {
+        try {
+            Desktop.getDesktop().browse(filePath.toUri());
+        } catch (Exception ex) {
+            // Fallback: show the path
+            Messages.showInfoMessage(
+                    project,
+                    "File saved at: " + filePath,
+                    "Export Complete"
+            );
+        }
+    }
+
+    private void clearResults() {
+        int choice = Messages.showYesNoDialog(
+                project,
+                "Are you sure you want to clear the current analysis?",
+                "Clear Analysis",
+                Messages.getQuestionIcon()
+        );
+
+        if (choice == Messages.YES) {
+            currentResults.clear();
+            showWelcomeMessage();
+
+            NotificationGroupManager.getInstance()
+                    .getNotificationGroup("LogAnalyzer.Notifications")
+                    .createNotification(
+                            "Analysis Cleared",
+                            "Ready to analyze a new log file.",
+                            NotificationType.INFORMATION
+                    )
+                    .notify(project);
+        }
+    }
+
+    private JTextArea createTextArea() {
+        JTextArea textArea = new JTextArea();
+        textArea.setEditable(false);
+        textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        textArea.setMargin(JBUI.insets(10));
+        return textArea;
+    }
+
+
+    private void showWelcomeMessage()
+    {
+        String welcome = """
+            ╔════════════════════════════════════════════════════════════╗
+            ║                  📊 LogAnalyzer Plugin                     ║
+            ╚════════════════════════════════════════════════════════════╝
+            
+            Welcome! Ready to analyze your log files.
+            
+            🚀 Quick Start:
+            1. Right-click on a .log file in your project
+            2. Select 'Analyze Log File' from the context menu
+            3. View detailed analysis in the tabs above
+            4. Export results using the 📤 Export button
+            
+            📋 Features:
+            • Traffic patterns by hour
+            • HTTP status code distribution
+            • Top accessed endpoints
+            • Performance metrics
+            • Security threat detection
+            
+            💡 Tip: You can export results as HTML (visual report)
+                    or JSON (for further processing).
+            
+            Ready to analyze logs! 🔍
+            """;
+
+        overviewTextArea.setText(welcome);
         trafficTextArea.setText("No data yet. Analyze a log file to see traffic patterns.");
         statusCodesTextArea.setText("No data yet. Analyze a log file to see status code distribution.");
         endpointsTextArea.setText("No data yet. Analyze a log file to see top endpoints.");
         performanceTextArea.setText("No data yet. Analyze a log file to see performance metrics.");
         securityTextArea.setText("No data yet. Analyze a log file to see security analysis.");
-
-        // Add tabs with scrollable text areas
-        tabbedPane.addTab("📊 Overview", createScrollablePanel(overviewTextArea));
-        tabbedPane.addTab("📈 Traffic by Hour", createScrollablePanel(trafficTextArea));
-        tabbedPane.addTab("🔢 Status Codes", createScrollablePanel(statusCodesTextArea));
-        tabbedPane.addTab("🎯 Top Endpoints", createScrollablePanel(endpointsTextArea));
-        tabbedPane.addTab("⚡ Performance", createScrollablePanel(performanceTextArea));
-        tabbedPane.addTab("🔒 Security", createScrollablePanel(securityTextArea));
-
-        mainPanel.add(tabbedPane, BorderLayout.CENTER);
-        mainPanel.add(statusLabel, BorderLayout.SOUTH);
     }
 
-    private JPanel createScrollablePanel(JBTextArea textArea)
-    {
-        JPanel panel = new JPanel(new BorderLayout());
-        textArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        panel.add(new JBScrollPane(textArea), BorderLayout.CENTER);
-        return panel;
-    }
 
     public JPanel getContent()
     {
         return mainPanel;
     }
 
-    public void updateStatus(String message)
-    {
-        SwingUtilities.invokeLater(() -> statusLabel.setText(message));
-    }
+    // ---------------------
 
     // Method to update all results at once
-    public void displayResults(
-            AnalysisResult totalResult,
-            AnalysisResult trafficResult,
-            AnalysisResult statusResult,
-            AnalysisResult endpointsResult,
-            AnalysisResult performanceResult,
-            AnalysisResult securityResult
-    )
-    {
-        SwingUtilities.invokeLater(() -> {
-            // Update Overview
-            updateOverview(totalResult);
+    public void displayResults(Map<String, AnalysisResult> results) {
+        // Store results for export
+        this.currentResults = new HashMap<>(results);
 
-            // Update Traffic by Hour
-            updateTraffic(trafficResult);
+        // Display in each tab
+        if (results.containsKey("total")) {
+            updateOverview(results.get("total"));
+        }
 
-            // Update Status Codes
-            updateStatusCodes(statusResult);
+        if (results.containsKey("traffic")) {
+            updateTraffic(results.get("traffic"));
+        }
 
-            // Update Top Endpoints
-            updateEndpoints(endpointsResult);
+        if (results.containsKey("statusCodes")) {
+            updateStatusCodes(results.get("statusCodes"));
+        }
 
-            // Update Performance
-            updatePerformance(performanceResult);
+        if (results.containsKey("endpoints")) {
+            updateEndpoints(results.get("endpoints"));
+        }
 
-            // Update Security
-            updateSecurity(securityResult);
+        if (results.containsKey("performance")) {
+            updatePerformance(results.get("performance"));
+        }
 
-            updateStatus("✅ Analysis complete!");
-        });
+        if (results.containsKey("security")) {
+            updateSecurity(results.get("security"));
+        }
     }
 
-    private void updateOverview(AnalysisResult totalResult)
-    {
+    private void updateOverview(AnalysisResult totalResult) {
         StringBuilder sb = new StringBuilder();
         sb.append("📊 LOG ANALYSIS OVERVIEW\n");
         sb.append("═══════════════════════════════════════\n\n");
 
         Map<String, Object> data = totalResult.getData();
 
-        if (data.containsKey("Total"))
-        {
+        if (data.containsKey("Total")) {
             sb.append("Total Requests: ").append(data.get("Total")).append("\n");
-        } else
-        {
+        } else {
             sb.append("Total Requests: 0\n");
         }
 
@@ -163,36 +325,29 @@ public class LogAnalyzerWindow
         overviewTextArea.setText(sb.toString());
     }
 
-    private void updateTraffic(AnalysisResult result)
-    {
+    private void updateTraffic(AnalysisResult result) {
         StringBuilder sb = new StringBuilder();
         sb.append("📈 TRAFFIC BY HOUR\n");
         sb.append("═══════════════════════════════════════\n\n");
 
         Map<String, Object> data = result.getData();
 
-        Map<Integer, Long> hourlyTraffic = new HashMap<>();
+        Map<Integer, Long> hourlyTraffic = new java.util.HashMap<>();
 
-        for (Map.Entry<String, Object> entry : data.entrySet())
-        {
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
             String dateTime = entry.getKey();
             Long count = (Long) entry.getValue();
 
-            // Extract hour from "yyyy-MM-dd HH:00" format
-            try
-            {
+            try {
                 String hourStr = dateTime.split(" ")[1].split(":")[0];
                 int hour = Integer.parseInt(hourStr);
                 hourlyTraffic.merge(hour, count, Long::sum);
-            } catch (Exception e)
-            {
+            } catch (Exception e) {
                 // Skip invalid entries
             }
         }
 
-        if (!hourlyTraffic.isEmpty())
-        {
-            // Find max for scaling
+        if (!hourlyTraffic.isEmpty()) {
             long max = hourlyTraffic.values().stream().max(Long::compare).orElse(1L);
 
             hourlyTraffic.entrySet().stream()
@@ -201,30 +356,26 @@ public class LogAnalyzerWindow
                         int hour = entry.getKey();
                         long count = entry.getValue();
 
-                        // Create bar chart with chars
                         int barLength = (int) ((count * 50.0) / max);
                         String bar = "█".repeat(Math.max(0, barLength));
 
                         sb.append(String.format("%02d:00 | %-50s %d\n", hour, bar, count));
                     });
-        } else
-        {
+        } else {
             sb.append("No traffic data available.\n");
         }
 
         trafficTextArea.setText(sb.toString());
     }
 
-    private void updateStatusCodes(AnalysisResult result)
-    {
+    private void updateStatusCodes(AnalysisResult result) {
         StringBuilder sb = new StringBuilder();
         sb.append("🔢 HTTP STATUS CODE DISTRIBUTION\n");
         sb.append("═══════════════════════════════════════\n\n");
 
         Map<String, Object> data = result.getData();
 
-        // Convert string keys to integers
-        Map<Integer, Long> statusCodes = new HashMap<>();
+        Map<Integer, Long> statusCodes = new java.util.HashMap<>();
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             try {
                 int code = Integer.parseInt(entry.getKey());
@@ -235,11 +386,9 @@ public class LogAnalyzerWindow
             }
         }
 
-        if (!statusCodes.isEmpty())
-        {
+        if (!statusCodes.isEmpty()) {
             long total = statusCodes.values().stream().mapToLong(Long::longValue).sum();
 
-            // Group by category
             long success = statusCodes.entrySet().stream()
                     .filter(e -> e.getKey() >= 200 && e.getKey() < 300)
                     .mapToLong(Map.Entry::getValue).sum();
@@ -278,17 +427,14 @@ public class LogAnalyzerWindow
         statusCodesTextArea.setText(sb.toString());
     }
 
-    private void updateEndpoints(AnalysisResult result)
-    {
+    private void updateEndpoints(AnalysisResult result) {
         StringBuilder sb = new StringBuilder();
         sb.append("🎯 TOP ENDPOINTS\n");
         sb.append("═══════════════════════════════════════\n\n");
 
         Map<String, Object> data = result.getData();
 
-        // The analyzer returns endpoint URLs directly as keys
-        if (!data.isEmpty())
-        {
+        if (!data.isEmpty()) {
             long total = data.values().stream()
                     .mapToLong(v -> (Long) v)
                     .sum();
@@ -300,17 +446,14 @@ public class LogAnalyzerWindow
                 sb.append(String.format("#%d  %s\n", rank++, entry.getKey()));
                 sb.append(String.format("    └─ %d requests (%.1f%%)\n\n", count, percentage));
             }
-        } else
-        {
+        } else {
             sb.append("No endpoint data available.\n");
         }
 
         endpointsTextArea.setText(sb.toString());
     }
 
-    @SuppressWarnings("unchecked")
-    private void updatePerformance(AnalysisResult result)
-    {
+    private void updatePerformance(AnalysisResult result) {
         StringBuilder sb = new StringBuilder();
         sb.append("⚡ PERFORMANCE METRICS\n");
         sb.append("═══════════════════════════════════════\n\n");
@@ -319,33 +462,28 @@ public class LogAnalyzerWindow
 
         sb.append("Response Size Statistics:\n\n");
 
-        if (data.containsKey("averageResponseSize"))
-        {
+        if (data.containsKey("averageResponseSize")) {
             double avgBytes = (Double) data.get("averageResponseSize");
             sb.append(String.format("Average: %.2f KB\n", avgBytes / 1024.0));
         }
 
-        if (data.containsKey("minResponseSize"))
-        {
+        if (data.containsKey("minResponseSize")) {
             double minBytes = (Double) data.get("minResponseSize");
             sb.append(String.format("Minimum: %.2f KB\n", minBytes / 1024.0));
         }
 
-        if (data.containsKey("maxResponseSize"))
-        {
-            double maxBytes = (Double) data.get("minResponseSize");
-            sb.append(String.format("Minimum: %.2f KB\n", maxBytes / 1024.0));
+        if (data.containsKey("maxResponseSize")) {
+            double maxBytes = (Double) data.get("maxResponseSize");
+            sb.append(String.format("Maximum: %.2f KB\n", maxBytes / 1024.0));
         }
 
-        if (data.containsKey("totalDataTransferred"))
-        {
+        if (data.containsKey("totalDataTransferred")) {
             double totalBytes = (Double) data.get("totalDataTransferred");
             sb.append(String.format("Total Transferred: %.2f MB\n", totalBytes / (1024.0 * 1024.0)));
         }
 
-        if (data.containsKey("largestEndpoints"))
-        {
-
+        if (data.containsKey("largestEndpoints")) {
+            @SuppressWarnings("unchecked")
             Map<String, Long> largest = (Map<String, Long>) data.get("largestEndpoints");
 
             if (!largest.isEmpty()) {
@@ -362,27 +500,23 @@ public class LogAnalyzerWindow
         performanceTextArea.setText(sb.toString());
     }
 
-    @SuppressWarnings("unchecked")
-    private void updateSecurity(AnalysisResult result)
-    {
+    private void updateSecurity(AnalysisResult result) {
         StringBuilder sb = new StringBuilder();
         sb.append("🔒 SECURITY ANALYSIS\n");
         sb.append("═══════════════════════════════════════\n\n");
 
         Map<String, Object> data = result.getData();
 
-        if (data.containsKey("suspiciousRequestCount"))
-        {
+        if (data.containsKey("suspiciousRequestCount")) {
             int suspiciousCount = (Integer) data.get("suspiciousRequestCount");
             sb.append(String.format("⚠️  Suspicious Requests Detected: %d\n\n", suspiciousCount));
         }
 
-        if (data.containsKey("potentialAttackers"))
-        {
-            List<String> attackers = (List<String>) data.get("potentialAttackers");
+        if (data.containsKey("potentialAttackers")) {
+            @SuppressWarnings("unchecked")
+            java.util.List<String> attackers = (java.util.List<String>) data.get("potentialAttackers");
 
-            if (!attackers.isEmpty())
-            {
+            if (!attackers.isEmpty()) {
                 sb.append("🚨 POTENTIAL ATTACKERS (>10 failed auth attempts):\n\n");
                 for (String ip : attackers) {
                     sb.append(String.format("   • %s\n", ip));
@@ -393,18 +527,16 @@ public class LogAnalyzerWindow
             }
         }
 
-        if (data.containsKey("unauthorizedAttempts"))
-        {
+        if (data.containsKey("unauthorizedAttempts")) {
             int unauthorizedCount = (Integer) data.get("unauthorizedAttempts");
             sb.append(String.format("Failed Authentication Attempts: %d unique IPs\n\n", unauthorizedCount));
         }
 
-        if (data.containsKey("topOffendingIPs"))
-        {
+        if (data.containsKey("topOffendingIPs")) {
+            @SuppressWarnings("unchecked")
             Map<String, Long> topOffenders = (Map<String, Long>) data.get("topOffendingIPs");
 
-            if (!topOffenders.isEmpty())
-            {
+            if (!topOffenders.isEmpty()) {
                 sb.append("🎯 TOP OFFENDING IPs (401/403 errors):\n\n");
 
                 int rank = 1;
@@ -418,12 +550,11 @@ public class LogAnalyzerWindow
         securityTextArea.setText(sb.toString());
     }
 
-    private String getStatusEmoji(int statusCode)
-    {
+    private String getStatusEmoji(int statusCode) {
         if (statusCode >= 200 && statusCode < 300) return "✓";
         if (statusCode >= 300 && statusCode < 400) return "↪";
         if (statusCode >= 400 && statusCode < 500) return "✗";
-        if (statusCode >= 500) return "⚠";
+        if (statusCode >= 500 && statusCode < 600) return "⚠";
         return "?";
     }
 }

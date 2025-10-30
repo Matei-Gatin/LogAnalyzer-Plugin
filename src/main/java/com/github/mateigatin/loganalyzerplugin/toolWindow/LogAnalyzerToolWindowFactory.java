@@ -12,7 +12,14 @@ public class LogAnalyzerToolWindowFactory implements ToolWindowFactory {
 
     @Override
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
-        LogAnalyzerWindow logAnalyzerWindow = new LogAnalyzerWindow(project);
+        LogAnalyzerWindow logAnalyzerWindow = project.getUserData(LogAnalyzerWindow.KEY);
+
+        if (logAnalyzerWindow == null)
+        {
+            logAnalyzerWindow = new LogAnalyzerWindow(project);
+            project.putUserData(LogAnalyzerWindow.KEY, logAnalyzerWindow);
+        }
+
         ContentFactory contentFactory = ContentFactory.getInstance();
         Content content = contentFactory.createContent(logAnalyzerWindow.getContent(), "", false);
         toolWindow.getContentManager().addContent(content);

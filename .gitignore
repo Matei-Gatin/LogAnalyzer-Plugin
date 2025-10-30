@@ -5,7 +5,6 @@
 .gradle/
 build/
 gradle-app.setting
-!gradle-wrapper.jar
 
 # IntelliJ IDEA
 .idea/
@@ -34,6 +33,8 @@ idea-sandbox/
 *.class
 
 # Package Files
+
+!gradle/wrapper/gradle-wrapper.jar  # Keep Gradle wrapper
 *.jar
 *.war
 *.nar

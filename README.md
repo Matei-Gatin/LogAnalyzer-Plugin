@@ -1,3 +1,4 @@
+
 # LogAnalyzer - IntelliJ IDEA Plugin
 
 <!-- Plugin description -->
@@ -15,35 +16,29 @@ Perfect for developers and DevOps engineers who need to analyze web server logs 
 
 ## 🚀 Features
 
-- **Traffic Analysis** - Visualize request patterns by hour
-- **Status Code Distribution** - Breakdown of HTTP response codes (2xx, 3xx, 4xx, 5xx)
-- **Top Endpoints** - Most accessed URLs with request counts
-- **Performance Metrics** - Response size analysis and largest endpoints
-- **Security Analysis** - Detect suspicious IPs and potential attacks
+- Visualize traffic by hour
+- HTTP status code breakdown (2xx, 3xx, 4xx, 5xx)
+- Top endpoints and request counts
+- Performance metrics (response size, data transferred)
+- Security analysis (suspicious IPs, failed logins)
+- Export results to HTML/JSON
 
 ## 📸 Screenshots
-### Overview:
-![LogAnalyzer Overview](screenshots/overview.png)
-
-### Traffic:
+![Overview](screenshots/overview.png)
 ![Traffic Analysis](screenshots/traffic.png)
 
 ## 🔧 Installation
 
-### From Source
 1. Clone this repository
 2. Run `./gradlew buildPlugin`
-3. Install plugin from disk in IntelliJ IDEA: `Settings → Plugins → ⚙️ → Install Plugin from Disk`
+3. In IntelliJ IDEA: `Settings → Plugins → ⚙️ → Install Plugin from Disk`
 
 ## 📖 Usage
 
 1. Right-click on any `.log` file in your project
 2. Select **"Analyze Log File"**
 3. View detailed analysis in the LogAnalyzer tool window
-
-## 🧪 Testing
-
-Sample log files are provided in `test-logs/` directory.
+4. Click **Export Report** to save results as HTML or JSON
 
 ## 🛠️ Built With
 
@@ -51,16 +46,13 @@ Sample log files are provided in `test-logs/` directory.
 - Java 21
 - Gradle
 
-## 📝 Log Format Support
+## 📝 Supported Log Formats
 
-Currently supports:
 - Apache Combined Log Format
 - Nginx Access Logs
 
-## 🚧 Work In Progress
+## 🚧 Roadmap
 
-This plugin is under active development. Planned features:
-- Export to JSON/HTML reports
 - Live log tailing
 - Log filtering and search
 - Custom threshold configuration

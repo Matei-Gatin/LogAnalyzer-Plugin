@@ -27,6 +27,11 @@
                 id="LogAnalyzer"
                 anchor="bottom"
                 icon="AllIcons.Toolwindows.ToolWindowMessages"/>
+
+        <!-- Register notification group for export/clear messages -->
+        <notificationGroup
+                displayType="BALLOON"
+                id="LogAnalyzer.Notifications"/>
     </extensions>
 
     <actions>

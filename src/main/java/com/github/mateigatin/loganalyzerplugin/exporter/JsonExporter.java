@@ -1,4 +1,4 @@
-package com.github.mateigatin.loganalyzerplugin.export;
+package com.github.mateigatin.loganalyzerplugin.exporter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;

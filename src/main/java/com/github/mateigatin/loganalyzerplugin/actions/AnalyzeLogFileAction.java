@@ -21,10 +21,13 @@ import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.ui.content.Content;
 import org.jetbrains.annotations.NotNull;
 
+import javax.swing.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -96,6 +99,9 @@ public class AnalyzeLogFileAction extends AnAction
             ApacheLogParser parser = new ApacheLogParser(filePath);
             List<AbstractLogEntry> logEntries = parser.parse();
 
+            // DEBUG: Check how many entries were parsed
+            System.out.println("=== DEBUG: Parsed " + logEntries.size() + " entries ===");
+
             if (logEntries.isEmpty())
             {
                 ApplicationManager.getApplication().invokeLater(() -> {
@@ -112,42 +118,55 @@ public class AnalyzeLogFileAction extends AnAction
             // Run all analyzers
             TotalRequestAnalyzer totalAnalyzer = new TotalRequestAnalyzer();
             AnalysisResult totalResult = totalAnalyzer.analyze(logEntries);
+            System.out.println("DEBUG totalResult: " + totalResult.getData());
 
             indicator.setFraction(0.5);
             StatusCodeAnalyzer statusAnalyzer = new StatusCodeAnalyzer();
             AnalysisResult statusResult = statusAnalyzer.analyze(logEntries);
+            System.out.println("DEBUG statusResult: " + statusResult.getData());
 
             indicator.setFraction(0.6);
             TrafficByHourAnalyzer trafficAnalyzer = new TrafficByHourAnalyzer();
             AnalysisResult trafficResult = trafficAnalyzer.analyze(logEntries);
+            System.out.println("DEBUG trafficResult: " + trafficResult.getData());
 
             indicator.setFraction(0.7);
             TopEndpointsAnalyzer endpointsAnalyzer = new TopEndpointsAnalyzer();
             AnalysisResult endpointsResult = endpointsAnalyzer.analyze(logEntries);
+            System.out.println("DEBUG endpointsResult: " + endpointsResult.getData());
 
             indicator.setFraction(0.8);
             PerformanceAnalyzer performanceAnalyzer = new PerformanceAnalyzer();
             AnalysisResult performanceResult = performanceAnalyzer.analyze(logEntries);
+            System.out.println("DEBUG performanceResult: " + performanceResult.getData());
 
             indicator.setFraction(0.9);
             SecurityAnalyzer securityAnalyzer = new SecurityAnalyzer();
             AnalysisResult securityResult = securityAnalyzer.analyze(logEntries);
+            System.out.println("DEBUG securityResult: " + securityResult.getData());
 
             indicator.setFraction(1.0);
             indicator.setText("Displaying results...");
 
-            // Update the tool window with results - we'll use a service to access it
-            ApplicationManager.getApplication().invokeLater(() -> {
+            // Update the tool window with results
+            ApplicationManager.getApplication().invokeLater(() ->
+            {
                 LogAnalyzerWindow window = getLogAnalyzerWindow(project);
+                System.out.println("DEBUG: LogAnalyzerWindow is " + (window == null ? "NULL" : "NOT NULL"));
+
                 if (window != null) {
-                    window.displayResults(
-                            totalResult,
-                            trafficResult,
-                            statusResult,
-                            endpointsResult,
-                            performanceResult,
-                            securityResult
-                    );
+                    // Put everything in map and pass to displayResults
+                    Map<String, AnalysisResult> results = new HashMap<>();
+                    results.put("total", totalResult);
+                    results.put("traffic", trafficResult);
+                    results.put("statusCodes", statusResult);
+                    results.put("endpoints", endpointsResult);
+                    results.put("performance", performanceResult);
+                    results.put("security", securityResult);
+
+                    System.out.println("DEBUG: Calling displayResults with map keys: " + results.keySet());
+
+                    window.displayResults(results);
                 }
 
                 Messages.showInfoMessage(project,
@@ -167,11 +186,41 @@ public class AnalyzeLogFileAction extends AnAction
     }
 
     private LogAnalyzerWindow getLogAnalyzerWindow(Project project) {
-        ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow("LogAnalyzer");
-        if (toolWindow != null && toolWindow.getContentManager().getContentCount() > 0) {
-            // Get the window instance from the project's user data
-            return project.getUserData(LogAnalyzerWindow.KEY);
+        ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(project);
+        ToolWindow toolWindow = toolWindowManager.getToolWindow("LogAnalyzer");
+
+        if (toolWindow == null)
+        {
+            System.out.println("DEBUG: ToolWindow 'LogAnalyzer' not found!");
+            return null;
         }
-        return null;
+
+        toolWindow.show(null);
+
+        Content content = toolWindow.getContentManager().getContent(0);
+        if (content == null)
+        {
+            System.out.println("DEBUG: No content found in tool window!");
+            return null;
+        }
+
+        // Get the component from content
+        JComponent component = content.getComponent();
+        if (component == null) {
+            System.out.println("DEBUG: No component in content!");
+            return null;
+        }
+
+        // Try to get LogAnalyzerWindow from project user data
+        LogAnalyzerWindow window = project.getUserData(LogAnalyzerWindow.KEY);
+
+        if (window == null) {
+            System.out.println("DEBUG: Window not in user data, creating new instance!");
+            // This shouldn't happen, but create one if needed
+            window = new LogAnalyzerWindow(project);
+            project.putUserData(LogAnalyzerWindow.KEY, window);
+        }
+
+        return window;
     }
 }

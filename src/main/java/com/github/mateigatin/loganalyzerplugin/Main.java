@@ -4,8 +4,8 @@ package com.github.mateigatin.loganalyzerplugin;
 import lombok.extern.slf4j.Slf4j;
 import com.github.mateigatin.loganalyzerplugin.analyzer.*;
 import com.github.mateigatin.loganalyzerplugin.cli.CliArguments;
-import com.github.mateigatin.loganalyzerplugin.export.JsonExporter;
-import com.github.mateigatin.loganalyzerplugin.export.ResultExporter;
+import com.github.mateigatin.loganalyzerplugin.exporter.JsonExporter;
+import com.github.mateigatin.loganalyzerplugin.exporter.ResultExporter;
 import com.github.mateigatin.loganalyzerplugin.model.AbstractLogEntry;
 import com.github.mateigatin.loganalyzerplugin.model.AnalysisResult;
 import com.github.mateigatin.loganalyzerplugin.parser.ApacheLogParser;
@@ -14,7 +14,6 @@ import com.github.mateigatin.loganalyzerplugin.stream.LogStreamProcessor;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;

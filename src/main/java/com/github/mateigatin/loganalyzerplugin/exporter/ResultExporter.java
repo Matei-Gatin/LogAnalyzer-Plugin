@@ -1,4 +1,4 @@
-package com.github.mateigatin.loganalyzerplugin.export;
+package com.github.mateigatin.loganalyzerplugin.exporter;
 
 import com.github.mateigatin.loganalyzerplugin.model.AnalysisResult;
 
