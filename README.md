@@ -59,22 +59,32 @@ Perfect for developers and DevOps engineers who need to analyze web server logs 
 
 ## 🔧 Installation
 
-### From Release
-1. Download the latest `.zip` from [Releases](https://github.com/Matei-Gatin/LogAnalyzer-Plugin/releases)
-2. In IntelliJ IDEA: `Settings → Plugins → ⚙️ → Install Plugin from Disk`
-3. Select the downloaded file and restart IDE
+### Build and Install from Source
 
-### From Source
-1. Clone this repository:
+1. **Clone this repository:**
    ```bash
    git clone https://github.com/Matei-Gatin/LogAnalyzer-Plugin.git
    cd LogAnalyzer-Plugin
    ```
-2. Build the plugin:
+
+2. **Build the plugin:**
    ```bash
    ./gradlew buildPlugin
    ```
-3. Install from disk: `build/distributions/LogAnalyzer-Plugin-*.zip`
+   The plugin will be built to: `build/distributions/LogAnalyzer-Plugin-*.zip`
+
+3. **Install in IntelliJ IDEA:**
+   - Open IntelliJ IDEA
+   - Go to `Settings → Plugins → ⚙️ (gear icon) → Install Plugin from Disk`
+   - Select the `.zip` file from `build/distributions/`
+   - Restart IntelliJ IDEA
+
+### Development Mode (For Testing)
+
+Run the plugin in a sandbox IDE:
+```bash
+./gradlew runIde
+```
 
 ## 📖 Usage
 
