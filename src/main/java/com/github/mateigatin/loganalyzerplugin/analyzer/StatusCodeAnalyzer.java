@@ -8,10 +8,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class StatusCodeAnalyzer implements LogAnalyzer {
+public class StatusCodeAnalyzer implements LogAnalyzer
+{
 
     @Override
-    public AnalysisResult analyze(List<AbstractLogEntry> entries) {
+    public AnalysisResult analyze(List<AbstractLogEntry> entries)
+    {
         Map<Integer, Long> counts = entries.stream()
                 .collect(Collectors.groupingBy(
                         s -> s.getHttpStatusCode().getCode(),

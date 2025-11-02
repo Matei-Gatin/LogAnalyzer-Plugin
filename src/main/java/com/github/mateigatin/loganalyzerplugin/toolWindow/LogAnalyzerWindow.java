@@ -25,6 +25,8 @@ import com.intellij.util.ui.JBUI;
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
@@ -113,6 +115,74 @@ public class LogAnalyzerWindow
 
         // Show welcome message
         showWelcomeMessage();
+
+        // Setup keyboard shortcuts
+        setupKeyboardShortcuts();
+    }
+
+    // keyboard Shortcuts
+    private void setupKeyboardShortcuts() {
+        // Get the root component's input/action maps
+        JComponent rootPane = mainPanel;
+
+        // Ctrl+F - Focus search field
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK),
+                "focusSearch"
+        );
+        rootPane.getActionMap().put("focusSearch", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                searchField.requestFocusInWindow();
+                searchField.selectAll();
+            }
+        });
+
+        // Ctrl+Shift+G - Export
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_G, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK),
+                "export"
+        );
+        rootPane.getActionMap().put("export", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                showExportDialog();
+            }
+        });
+
+        // Ctrl+W - Toggle watch mode
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_W, InputEvent.CTRL_DOWN_MASK),
+                "toggleWatch"
+        );
+        rootPane.getActionMap().put("toggleWatch", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (watchButton.isEnabled()) {
+                    toggleWatchMode();
+                }
+            }
+        });
+
+        // Escape - Clear filters
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+                "clearFilters"
+        );
+        rootPane.getActionMap().put("clearFilters", new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (!allLogEntries.isEmpty()) {
+                    clearFilters();
+                }
+            }
+        });
+
+        // Enter in search field - Apply filters
+        searchField.addActionListener(e -> applyFilters());
+        statusCodeField.addActionListener(e -> applyFilters());
+        startDateField.addActionListener(e -> applyFilters());
+        endDateField.addActionListener(e -> applyFilters());
     }
 
     // Creating the filter panel
@@ -132,7 +202,7 @@ public class LogAnalyzerWindow
 
         row1.add(new JLabel("Search:"));
         searchField = new JBTextField(20);
-        searchField.setToolTipText("Search by IP, endpoint, or any keyword");
+        searchField.setToolTipText("Search by IP, endpoint, or any keyword (Ctrl+F to focus, Enter to apply)");
         row1.add(searchField);
 
         row1.add(Box.createHorizontalStrut(10));
@@ -361,7 +431,7 @@ public class LogAnalyzerWindow
 
         // Watch Mode button
         watchButton = new JButton("▶ Start Watch Mode");
-        watchButton.setToolTipText("Monitor log file for real-time updates");
+        watchButton.setToolTipText("Monitor log file for real-time updates (Ctrl+W)");
         watchButton.setEnabled(false); // Disabled until a file is analyzed
         watchButton.addActionListener(e -> toggleWatchMode());
 
@@ -371,7 +441,7 @@ public class LogAnalyzerWindow
 
         // Export button
         JButton exportButton = new JButton("📤 Export Report");
-        exportButton.setToolTipText("Export analysis results to HTML or JSON");
+        exportButton.setToolTipText("Export analysis results to HTML or JSON (Ctrl+Shift+G)");
         exportButton.addActionListener(e -> showExportDialog());
 
         // Clear button
@@ -693,36 +763,69 @@ public class LogAnalyzerWindow
 
     private void updateOverview(AnalysisResult totalResult) {
         StringBuilder sb = new StringBuilder();
-        sb.append("📊 LOG ANALYSIS OVERVIEW\n");
-        sb.append("═══════════════════════════════════════\n\n");
+        sb.append("================================================================\n");
+        sb.append("                   LOG ANALYSIS OVERVIEW                        \n");
+        sb.append("================================================================\n\n");
 
         Map<String, Object> data = totalResult.getData();
 
+        long totalRequests = 0;
         if (data.containsKey("Total")) {
-            sb.append("Total Requests: ").append(data.get("Total")).append("\n");
-        } else {
-            sb.append("Total Requests: 0\n");
+            totalRequests = ((Number) data.get("Total")).longValue();
         }
 
-        sb.append("Analysis Time: ").append(java.time.LocalDateTime.now()).append("\n\n");
+        sb.append("+------------------------------------------------------------+\n");
+        sb.append(String.format("| Total Requests Analyzed: %-30d |\n", totalRequests));
+        sb.append(String.format("| Analysis Time: %-40s |\n",
+                java.time.LocalDateTime.now().format(
+                        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                )));
 
-        sb.append("🔍 Quick Summary:\n");
-        sb.append("├─ Check 'Traffic by Hour' for request patterns\n");
-        sb.append("├─ Check 'Status Codes' for error rates\n");
-        sb.append("├─ Check 'Top Endpoints' for most accessed URLs\n");
-        sb.append("├─ Check 'Performance' for response times\n");
-        sb.append("└─ Check 'Security' for suspicious activity\n");
+        if (currentLogFilePath != null) {
+            String fileName = new java.io.File(currentLogFilePath).getName();
+            String displayName = fileName.length() > 40 ? fileName.substring(0, 37) + "..." : fileName;
+            sb.append(String.format("| Log File: %-48s |\n", displayName));
+        }
+
+        sb.append("+------------------------------------------------------------+\n\n");
+
+        sb.append("ANALYSIS SECTIONS:\n");
+        sb.append("================================================================\n");
+        sb.append("  Traffic by Hour    -> View request patterns over time\n");
+        sb.append("  Status Codes       -> HTTP response code distribution\n");
+        sb.append("  Top Endpoints      -> Most frequently accessed URLs\n");
+        sb.append("  Performance        -> Response sizes and data transfer\n");
+        sb.append("  Security           -> Threat detection and suspicious activity\n");
+        sb.append("\n");
+
+        sb.append("KEYBOARD SHORTCUTS:\n");
+        sb.append("================================================================\n");
+        sb.append("  Ctrl+F         -> Focus search field\n");
+        sb.append("  Ctrl+Shift+G   -> Export report\n");
+        sb.append("  Ctrl+W         -> Toggle watch mode\n");
+        sb.append("  Escape         -> Clear filters\n");
+        sb.append("  Enter          -> Apply current filters\n");
+        sb.append("\n");
+
+        if (currentFilter.hasFilters()) {
+            sb.append("ACTIVE FILTERS:\n");
+            sb.append("================================================================\n");
+            sb.append("  ").append(currentFilter.toString()).append("\n\n");
+        }
+
+        sb.append("TIP: Use filters to drill down into specific time ranges,\n");
+        sb.append("     status codes, or search for specific IPs/endpoints.\n");
 
         overviewTextArea.setText(sb.toString());
     }
 
     private void updateTraffic(AnalysisResult result) {
         StringBuilder sb = new StringBuilder();
-        sb.append("📈 TRAFFIC BY HOUR\n");
-        sb.append("═══════════════════════════════════════\n\n");
+        sb.append("================================================================\n");
+        sb.append("                      TRAFFIC BY HOUR                           \n");
+        sb.append("================================================================\n\n");
 
         Map<String, Object> data = result.getData();
-
         Map<Integer, Long> hourlyTraffic = new java.util.HashMap<>();
 
         for (Map.Entry<String, Object> entry : data.entrySet()) {
@@ -739,21 +842,40 @@ public class LogAnalyzerWindow
         }
 
         if (!hourlyTraffic.isEmpty()) {
+            long total = hourlyTraffic.values().stream().mapToLong(Long::longValue).sum();
             long max = hourlyTraffic.values().stream().max(Long::compare).orElse(1L);
+
+            sb.append(String.format("Total Requests: %d\n", total));
+            sb.append(String.format("Peak Hour: %02d:00 (%d requests)\n\n",
+                    hourlyTraffic.entrySet().stream()
+                            .max(Map.Entry.comparingByValue())
+                            .map(Map.Entry::getKey).orElse(0),
+                    max));
+
+            sb.append("Hour  | Traffic Distribution\n");
+            sb.append("------+-------------------------------------------------------\n");
 
             hourlyTraffic.entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())
                     .forEach(entry -> {
                         int hour = entry.getKey();
                         long count = entry.getValue();
+                        double percentage = 100.0 * count / total;
 
-                        int barLength = (int) ((count * 50.0) / max);
-                        String bar = "█".repeat(Math.max(0, barLength));
+                        // Calculate bar length (max 40 chars)
+                        int barLength = (int) ((count * 40.0) / max);
 
-                        sb.append(String.format("%02d:00 | %-50s %d\n", hour, bar, count));
+                        String bar = "#".repeat(Math.max(0, barLength));
+                        String space = ".".repeat(Math.max(0, 40 - barLength));
+
+                        sb.append(String.format("%02d:00 | %s%s %4d (%.1f%%)\n",
+                                hour, bar, space, count, percentage));
                     });
+
+            sb.append("\nTip: Use date filters to zoom into specific time ranges.\n");
         } else {
             sb.append("No traffic data available.\n");
+            sb.append("\nTip: Make sure your log file contains timestamp information.\n");
         }
 
         trafficTextArea.setText(sb.toString());
@@ -761,12 +883,13 @@ public class LogAnalyzerWindow
 
     private void updateStatusCodes(AnalysisResult result) {
         StringBuilder sb = new StringBuilder();
-        sb.append("🔢 HTTP STATUS CODE DISTRIBUTION\n");
-        sb.append("═══════════════════════════════════════\n\n");
+        sb.append("================================================================\n");
+        sb.append("              HTTP STATUS CODE DISTRIBUTION                     \n");
+        sb.append("================================================================\n\n");
 
         Map<String, Object> data = result.getData();
-
         Map<Integer, Long> statusCodes = new java.util.HashMap<>();
+
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             try {
                 int code = Integer.parseInt(entry.getKey());
@@ -796,21 +919,32 @@ public class LogAnalyzerWindow
                     .filter(e -> e.getKey() >= 500 && e.getKey() < 600)
                     .mapToLong(Map.Entry::getValue).sum();
 
+            // SUMMARY SECTION
             sb.append("SUMMARY:\n");
-            sb.append(String.format("✓ 2xx Success:      %6d (%.1f%%)\n", success, 100.0 * success / total));
-            sb.append(String.format("↪ 3xx Redirect:     %6d (%.1f%%)\n", redirect, 100.0 * redirect / total));
-            sb.append(String.format("✗ 4xx Client Error: %6d (%.1f%%)\n", clientError, 100.0 * clientError / total));
-            sb.append(String.format("⚠ 5xx Server Error: %6d (%.1f%%)\n", serverError, 100.0 * serverError / total));
+            sb.append(String.format("[OK] 2xx Success:      %6d (%.1f%%)\n", success, 100.0 * success / total));
+            sb.append(String.format("[->] 3xx Redirect:     %6d (%.1f%%)\n", redirect, 100.0 * redirect / total));
+            sb.append(String.format("[!!] 4xx Client Error: %6d (%.1f%%)\n", clientError, 100.0 * clientError / total));
+            sb.append(String.format("[XX] 5xx Server Error: %6d (%.1f%%)\n\n", serverError, 100.0 * serverError / total));
 
-            sb.append("\n\nDETAILED BREAKDOWN:\n");
+            // DETAILED BREAKDOWN
+            sb.append("DETAILED BREAKDOWN:\n");
+            sb.append("----------------------------------------------------------------\n");
+
             statusCodes.entrySet().stream()
                     .sorted(Map.Entry.<Integer, Long>comparingByValue().reversed())
                     .forEach(entry -> {
-                        String emoji = getStatusEmoji(entry.getKey());
+                        String symbol = getStatusSymbol(entry.getKey());
                         double percentage = 100.0 * entry.getValue() / total;
-                        sb.append(String.format("%s %d: %6d requests (%.1f%%)\n",
-                                emoji, entry.getKey(), entry.getValue(), percentage));
+
+                        // Visual bar (40 chars max)
+                        int barLength = (int) ((entry.getValue() * 40.0) / total);
+                        String bar = "#".repeat(Math.max(0, barLength));
+
+                        sb.append(String.format("%s %3d: %6d requests (%.1f%%) %s\n",
+                                symbol, entry.getKey(), entry.getValue(), percentage, bar));
                     });
+
+            sb.append("\nTip: Filter by status code to see specific error patterns.\n");
         } else {
             sb.append("No status code data available.\n");
         }
@@ -818,7 +952,8 @@ public class LogAnalyzerWindow
         statusCodesTextArea.setText(sb.toString());
     }
 
-    private void updateEndpoints(AnalysisResult result) {
+    private void updateEndpoints(AnalysisResult result)
+    {
         StringBuilder sb = new StringBuilder();
         sb.append("🎯 TOP ENDPOINTS\n");
         sb.append("═══════════════════════════════════════\n\n");
@@ -831,20 +966,23 @@ public class LogAnalyzerWindow
                     .sum();
 
             int rank = 1;
-            for (Map.Entry<String, Object> entry : data.entrySet()) {
+            for (Map.Entry<String, Object> entry : data.entrySet())
+            {
                 Long count = (Long) entry.getValue();
                 double percentage = 100.0 * count / total;
                 sb.append(String.format("#%d  %s\n", rank++, entry.getKey()));
                 sb.append(String.format("    └─ %d requests (%.1f%%)\n\n", count, percentage));
             }
-        } else {
+        } else
+        {
             sb.append("No endpoint data available.\n");
         }
 
         endpointsTextArea.setText(sb.toString());
     }
 
-    private void updatePerformance(AnalysisResult result) {
+    private void updatePerformance(AnalysisResult result)
+    {
         StringBuilder sb = new StringBuilder();
         sb.append("⚡ PERFORMANCE METRICS\n");
         sb.append("═══════════════════════════════════════\n\n");
@@ -853,35 +991,42 @@ public class LogAnalyzerWindow
 
         sb.append("Response Size Statistics:\n\n");
 
-        if (data.containsKey("averageResponseSize")) {
+        if (data.containsKey("averageResponseSize"))
+        {
             double avgBytes = (Double) data.get("averageResponseSize");
             sb.append(String.format("Average: %.2f KB\n", avgBytes / 1024.0));
         }
 
-        if (data.containsKey("minResponseSize")) {
+        if (data.containsKey("minResponseSize"))
+        {
             double minBytes = (Double) data.get("minResponseSize");
             sb.append(String.format("Minimum: %.2f KB\n", minBytes / 1024.0));
         }
 
-        if (data.containsKey("maxResponseSize")) {
+        if (data.containsKey("maxResponseSize"))
+        {
             double maxBytes = (Double) data.get("maxResponseSize");
             sb.append(String.format("Maximum: %.2f KB\n", maxBytes / 1024.0));
         }
 
-        if (data.containsKey("totalDataTransferred")) {
+        if (data.containsKey("totalDataTransferred"))
+        {
             double totalBytes = (Double) data.get("totalDataTransferred");
             sb.append(String.format("Total Transferred: %.2f MB\n", totalBytes / (1024.0 * 1024.0)));
         }
 
-        if (data.containsKey("largestEndpoints")) {
+        if (data.containsKey("largestEndpoints"))
+        {
             @SuppressWarnings("unchecked")
             Map<String, Long> largest = (Map<String, Long>) data.get("largestEndpoints");
 
-            if (!largest.isEmpty()) {
+            if (!largest.isEmpty())
+            {
                 sb.append("\n\n📦 LARGEST ENDPOINTS (by data transferred):\n");
 
                 int rank = 1;
-                for (Map.Entry<String, Long> entry : largest.entrySet()) {
+                for (Map.Entry<String, Long> entry : largest.entrySet())
+                {
                     sb.append(String.format("#%d  %s\n", rank++, entry.getKey()));
                     sb.append(String.format("    └─ %.2f KB transferred\n\n", entry.getValue() / 1024.0));
                 }
@@ -891,14 +1036,16 @@ public class LogAnalyzerWindow
         performanceTextArea.setText(sb.toString());
     }
 
-    private void updateSecurity(AnalysisResult result) {
+    private void updateSecurity(AnalysisResult result)
+    {
         StringBuilder sb = new StringBuilder();
         sb.append("🔒 SECURITY ANALYSIS\n");
         sb.append("═══════════════════════════════════════\n\n");
 
         Map<String, Object> data = result.getData();
 
-        if (data.containsKey("suspiciousRequestCount")) {
+        if (data.containsKey("suspiciousRequestCount"))
+        {
             int suspiciousCount = (Integer) data.get("suspiciousRequestCount");
             sb.append(String.format("⚠️  Suspicious Requests Detected: %d\n\n", suspiciousCount));
         }
@@ -918,12 +1065,14 @@ public class LogAnalyzerWindow
             }
         }
 
-        if (data.containsKey("unauthorizedAttempts")) {
+        if (data.containsKey("unauthorizedAttempts"))
+        {
             int unauthorizedCount = (Integer) data.get("unauthorizedAttempts");
             sb.append(String.format("Failed Authentication Attempts: %d unique IPs\n\n", unauthorizedCount));
         }
 
-        if (data.containsKey("topOffendingIPs")) {
+        if (data.containsKey("topOffendingIPs"))
+        {
             @SuppressWarnings("unchecked")
             Map<String, Long> topOffenders = (Map<String, Long>) data.get("topOffendingIPs");
 
@@ -941,12 +1090,13 @@ public class LogAnalyzerWindow
         securityTextArea.setText(sb.toString());
     }
 
-    private String getStatusEmoji(int statusCode) {
-        if (statusCode >= 200 && statusCode < 300) return "✓";
-        if (statusCode >= 300 && statusCode < 400) return "↪";
-        if (statusCode >= 400 && statusCode < 500) return "✗";
-        if (statusCode >= 500 && statusCode < 600) return "⚠";
-        return "?";
+    // helper for status symbols
+    private String getStatusSymbol(int statusCode) {
+        if (statusCode >= 200 && statusCode < 300) return "[OK]";
+        if (statusCode >= 300 && statusCode < 400) return "[->]";
+        if (statusCode >= 400 && statusCode < 500) return "[!!]";
+        if (statusCode >= 500 && statusCode < 600) return "[XX]";
+        return "[??]";
     }
 
     public void dispose()

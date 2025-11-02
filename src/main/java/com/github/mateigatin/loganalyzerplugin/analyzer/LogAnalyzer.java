@@ -5,7 +5,8 @@ import com.github.mateigatin.loganalyzerplugin.model.AnalysisResult;
 
 import java.util.List;
 
-public interface LogAnalyzer {
+public interface LogAnalyzer
+{
     AnalysisResult analyze(List<AbstractLogEntry> entries);
     String getAnalyzerName();
 }

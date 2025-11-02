@@ -27,7 +27,7 @@ public class LogFilter
         this.searchQuery = searchQuery != null ? searchQuery : "";
     }
 
-    public boolean hsFilters()
+    public boolean hasFilters()
     {
         return !searchQuery.isEmpty() || startDate != null || endDate != null || statusCodeFilter != null;
     }
