@@ -1,7 +1,9 @@
 package com.github.mateigatin.loganalyzerplugin.toolWindow;
 
+import com.github.mateigatin.loganalyzerplugin.actions.AnalyzeLogFileAction;
 import com.github.mateigatin.loganalyzerplugin.export.ExportService;
 import com.github.mateigatin.loganalyzerplugin.model.AnalysisResult;
+import com.github.mateigatin.loganalyzerplugin.services.LogFileWatcher;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.fileChooser.*;
@@ -10,6 +12,7 @@ import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileWrapper;
+import com.intellij.ui.JBColor;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.util.ui.JBUI;
@@ -19,6 +22,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -41,9 +46,16 @@ public class LogAnalyzerWindow
     private Map<String, AnalysisResult> currentResults = new HashMap<>();
     private final ExportService exportService = new ExportService();
 
+    // Watch Mode components
+    private final LogFileWatcher fileWatcher;
+    private String currentLogFilePath;
+    private JButton watchButton;
+    private JLabel watchStatusLabel;
+
     public LogAnalyzerWindow(Project project)
     {
         this.project = project;
+        this.fileWatcher = new LogFileWatcher(project);
         this.mainPanel = new JPanel(new BorderLayout());
 
         // toolbar with export button
@@ -80,6 +92,16 @@ public class LogAnalyzerWindow
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY));
 
+        // Watch Mode button
+        watchButton = new JButton("▶ Start Watch Mode");
+        watchButton.setToolTipText("Monitor log file for real-time updates");
+        watchButton.setEnabled(false); // Disabled until a file is analyzed
+        watchButton.addActionListener(e -> toggleWatchMode());
+
+        // Watch status label
+        watchStatusLabel = new JLabel("No file being watched");
+        watchStatusLabel.setForeground(JBColor.GRAY);
+
         // Export button
         JButton exportButton = new JButton("📤 Export Report");
         exportButton.setToolTipText("Export analysis results to HTML or JSON");
@@ -90,10 +112,81 @@ public class LogAnalyzerWindow
         clearButton.setToolTipText("Clear current analysis");
         clearButton.addActionListener(e -> clearResults());
 
+        // Add separator
+        JSeparator separator = new JSeparator(SwingConstants.VERTICAL);
+        separator.setPreferredSize(new Dimension(1, 20));
+
+        toolbar.add(watchButton);
+        toolbar.add(watchStatusLabel);
+        toolbar.add(separator);
         toolbar.add(exportButton);
         toolbar.add(clearButton);
 
         return toolbar;
+    }
+
+    private void toggleWatchMode()
+    {
+        if (fileWatcher.isWatching())
+        {
+            stopWatchMode();
+        } else
+        {
+            startWatchMode();
+        }
+    }
+
+    private void startWatchMode() {
+        if (currentLogFilePath == null) {
+            Messages.showWarningDialog(
+                    project,
+                    "No log file to watch. Please analyze a file first.",
+                    "Watch Mode"
+            );
+            return;
+        }
+
+        fileWatcher.startWatching(currentLogFilePath, this::onFileChanged);
+
+        watchButton.setText("⏸ Pause Watch");
+        watchButton.setForeground(new Color(220, 118, 51));
+
+        String fileName = new java.io.File(currentLogFilePath).getName();
+        watchStatusLabel.setText("🟢 Watching: " + fileName);
+        watchStatusLabel.setForeground(new Color(0, 150, 0));
+
+        showNotification("Watch Mode Started", "Monitoring: " + fileName);
+    }
+
+    private void stopWatchMode() {
+        fileWatcher.stopWatching();
+
+        watchButton.setText("▶ Start Watch Mode");
+        watchButton.setForeground(null); // Reset to default color
+        watchStatusLabel.setText("⏸ Watch paused");
+        watchStatusLabel.setForeground(JBColor.GRAY);
+
+        showNotification("Watch Mode Paused", "File monitoring stopped");
+    }
+
+    private void onFileChanged(Path filePath) {
+        // Update status label with timestamp
+        SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
+        watchStatusLabel.setText("🔄 Updated at " + sdf.format(new Date()));
+        watchStatusLabel.setForeground(new Color(0, 120, 215));
+
+        // Re-analyze the file - we'll implement this method in AnalyzeLogFileAction
+        // For now, show a notification
+//        showNotification("Log File Updated", "Re-analyzing " + filePath.getFileName());
+
+         AnalyzeLogFileAction.reAnalyzerFile(project, filePath.toString(), this);
+    }
+
+    private void showNotification(String title, String message) {
+        NotificationGroupManager.getInstance()
+                .getNotificationGroup("LogAnalyzer.Notifications")
+                .createNotification(title, message, NotificationType.INFORMATION)
+                .notify(project);
     }
 
     private void showExportDialog() {
@@ -202,7 +295,15 @@ public class LogAnalyzerWindow
         );
 
         if (choice == Messages.YES) {
+            // Stop watching if active
+            if (fileWatcher.isWatching())
+            {
+                stopWatchMode();
+            }
+
             currentResults.clear();
+            currentLogFilePath = null;
+            watchButton.setEnabled(false);
             showWelcomeMessage();
 
             NotificationGroupManager.getInstance()
@@ -238,18 +339,19 @@ public class LogAnalyzerWindow
             1. Right-click on a .log file in your project
             2. Select 'Analyze Log File' from the context menu
             3. View detailed analysis in the tabs above
-            4. Export results using the 📤 Export button
+            4. Use ▶ Start Watch Mode for real-time monitoring
+            5. Export results using the 📤 Export button
             
             📋 Features:
+            • Real-time log monitoring
             • Traffic patterns by hour
             • HTTP status code distribution
             • Top accessed endpoints
             • Performance metrics
             • Security threat detection
-            
-            💡 Tip: You can export results as HTML (visual report)
-                    or JSON (for further processing).
-            
+    
+            💡 Tip: Watch Mode automatically re-analyzes when the log file changes.
+
             Ready to analyze logs! 🔍
             """;
 
@@ -269,10 +371,21 @@ public class LogAnalyzerWindow
 
     // ---------------------
 
+    public void displayResults(Map<String, AnalysisResult> results)
+    {
+        displayResults(results, null);
+    }
+
     // Method to update all results at once
-    public void displayResults(Map<String, AnalysisResult> results) {
+    public void displayResults(Map<String, AnalysisResult> results, String filePath) {
         // Store results for export
         this.currentResults = new HashMap<>(results);
+
+        if (filePath != null)
+        {
+            this.currentLogFilePath = filePath;
+            watchButton.setEnabled(true);
+        }
 
         // Display in each tab
         if (results.containsKey("total")) {
@@ -556,5 +669,13 @@ public class LogAnalyzerWindow
         if (statusCode >= 400 && statusCode < 500) return "✗";
         if (statusCode >= 500 && statusCode < 600) return "⚠";
         return "?";
+    }
+
+    public void dispose()
+    {
+        if (fileWatcher.isWatching())
+        {
+            fileWatcher.stopWatching();
+        }
     }
 }

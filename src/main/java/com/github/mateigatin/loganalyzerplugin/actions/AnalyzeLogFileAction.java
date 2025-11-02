@@ -4,6 +4,7 @@ import com.github.mateigatin.loganalyzerplugin.analyzer.*;
 import com.github.mateigatin.loganalyzerplugin.model.AbstractLogEntry;
 import com.github.mateigatin.loganalyzerplugin.model.AnalysisResult;
 import com.github.mateigatin.loganalyzerplugin.parser.ApacheLogParser;
+import com.github.mateigatin.loganalyzerplugin.parser.LogParser;
 import com.github.mateigatin.loganalyzerplugin.toolWindow.LogAnalyzerWindow;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
@@ -80,14 +81,18 @@ public class AnalyzeLogFileAction extends AnAction
     public void update(@NotNull AnActionEvent e) {
         // Only show action for .log files
         VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
-        e.getPresentation().setEnabledAndVisible(file != null && !file.isDirectory());
+//        e.getPresentation().setEnabledAndVisible(file != null && !file.isDirectory());
 //        boolean isLogFile = file != null &&
 //                !file.isDirectory() &&
 //                (file.getName().endsWith(".log") || file.getName().endsWith(".txt"));
 //        e.getPresentation().setEnabledAndVisible(isLogFile);
+
+        boolean enabled = file != null &&
+                !file.isDirectory() &&
+                (file.getName().endsWith(".log") || file.getName().endsWith(".txt"));
+        e.getPresentation().setEnabledAndVisible(enabled);
     }
 
-    // TODO: FIX THIS METHOD:
     private void analyzeLogFile(Project project, String filePath, ProgressIndicator indicator)
     {
         indicator.setIndeterminate(false);
@@ -99,8 +104,6 @@ public class AnalyzeLogFileAction extends AnAction
             ApacheLogParser parser = new ApacheLogParser(filePath);
             List<AbstractLogEntry> logEntries = parser.parse();
 
-            // DEBUG: Check how many entries were parsed
-            System.out.println("=== DEBUG: Parsed " + logEntries.size() + " entries ===");
 
             if (logEntries.isEmpty())
             {
@@ -118,32 +121,26 @@ public class AnalyzeLogFileAction extends AnAction
             // Run all analyzers
             TotalRequestAnalyzer totalAnalyzer = new TotalRequestAnalyzer();
             AnalysisResult totalResult = totalAnalyzer.analyze(logEntries);
-            System.out.println("DEBUG totalResult: " + totalResult.getData());
 
             indicator.setFraction(0.5);
             StatusCodeAnalyzer statusAnalyzer = new StatusCodeAnalyzer();
             AnalysisResult statusResult = statusAnalyzer.analyze(logEntries);
-            System.out.println("DEBUG statusResult: " + statusResult.getData());
 
             indicator.setFraction(0.6);
             TrafficByHourAnalyzer trafficAnalyzer = new TrafficByHourAnalyzer();
             AnalysisResult trafficResult = trafficAnalyzer.analyze(logEntries);
-            System.out.println("DEBUG trafficResult: " + trafficResult.getData());
 
             indicator.setFraction(0.7);
             TopEndpointsAnalyzer endpointsAnalyzer = new TopEndpointsAnalyzer();
             AnalysisResult endpointsResult = endpointsAnalyzer.analyze(logEntries);
-            System.out.println("DEBUG endpointsResult: " + endpointsResult.getData());
 
             indicator.setFraction(0.8);
             PerformanceAnalyzer performanceAnalyzer = new PerformanceAnalyzer();
             AnalysisResult performanceResult = performanceAnalyzer.analyze(logEntries);
-            System.out.println("DEBUG performanceResult: " + performanceResult.getData());
 
             indicator.setFraction(0.9);
             SecurityAnalyzer securityAnalyzer = new SecurityAnalyzer();
             AnalysisResult securityResult = securityAnalyzer.analyze(logEntries);
-            System.out.println("DEBUG securityResult: " + securityResult.getData());
 
             indicator.setFraction(1.0);
             indicator.setText("Displaying results...");
@@ -152,7 +149,6 @@ public class AnalyzeLogFileAction extends AnAction
             ApplicationManager.getApplication().invokeLater(() ->
             {
                 LogAnalyzerWindow window = getLogAnalyzerWindow(project);
-                System.out.println("DEBUG: LogAnalyzerWindow is " + (window == null ? "NULL" : "NOT NULL"));
 
                 if (window != null) {
                     // Put everything in map and pass to displayResults
@@ -164,9 +160,8 @@ public class AnalyzeLogFileAction extends AnAction
                     results.put("performance", performanceResult);
                     results.put("security", securityResult);
 
-                    System.out.println("DEBUG: Calling displayResults with map keys: " + results.keySet());
-
-                    window.displayResults(results);
+                    // Pass the file path so Watch Mode knows what to monitor
+                    window.displayResults(results, filePath);
                 }
 
                 Messages.showInfoMessage(project,
@@ -184,6 +179,71 @@ public class AnalyzeLogFileAction extends AnAction
             ex.printStackTrace();
         }
     }
+
+    /**
+     * Public static method to re-analyze a file (used by Watch Mode)
+     */
+    public static void reAnalyzerFile(Project project, String filePath, LogAnalyzerWindow window)
+    {
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "Re-analyzing Log File", false)
+        {
+            @Override
+            public void run(@NotNull ProgressIndicator indicator)
+            {
+                indicator.setIndeterminate(false);
+                indicator.setFraction(0.0);
+                indicator.setText("Reading updated log file...");
+
+                try
+                {
+                    ApacheLogParser parser = new ApacheLogParser(filePath);
+                    List<AbstractLogEntry> logEntries = parser.parse();
+
+                    if (logEntries.isEmpty())
+                    {
+                        return; // skip if empty
+                    }
+
+                    indicator.setFraction(0.3);
+                    indicator.setText("Running analyzers...");
+
+                    // Run all analyzers
+                    Map<String, AnalysisResult> results = new HashMap<>();
+
+                    TotalRequestAnalyzer totalAnalyzer = new TotalRequestAnalyzer();
+                    results.put("total", totalAnalyzer.analyze(logEntries));
+
+                    StatusCodeAnalyzer statusAnalyzer = new StatusCodeAnalyzer();
+                    results.put("statusCodes", statusAnalyzer.analyze(logEntries));
+
+                    TrafficByHourAnalyzer trafficAnalyzer = new TrafficByHourAnalyzer();
+                    results.put("traffic", trafficAnalyzer.analyze(logEntries));
+
+                    TopEndpointsAnalyzer endpointsAnalyzer = new TopEndpointsAnalyzer();
+                    results.put("endpoints", endpointsAnalyzer.analyze(logEntries));
+
+                    PerformanceAnalyzer performanceAnalyzer = new PerformanceAnalyzer();
+                    results.put("performance", performanceAnalyzer.analyze(logEntries));
+
+                    SecurityAnalyzer securityAnalyzer = new SecurityAnalyzer();
+                    results.put("security", securityAnalyzer.analyze(logEntries));
+
+                    indicator.setFraction(1.0);
+                    indicator.setText("Updating display...");
+
+                    // Update UI
+                    ApplicationManager.getApplication().invokeLater(() -> {
+                        window.displayResults(results, filePath);
+                    });
+                } catch (Exception ex)
+                {
+                    ex.printStackTrace();
+                }
+            }
+
+        });
+    }
+
 
     private LogAnalyzerWindow getLogAnalyzerWindow(Project project) {
         ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(project);
@@ -205,17 +265,16 @@ public class AnalyzeLogFileAction extends AnAction
         }
 
         // Get the component from content
-        JComponent component = content.getComponent();
-        if (component == null) {
-            System.out.println("DEBUG: No component in content!");
-            return null;
-        }
+//        JComponent component = content.getComponent();
+//        if (component == null) {
+//            System.out.println("DEBUG: No component in content!");
+//            return null;
+//        }
 
         // Try to get LogAnalyzerWindow from project user data
         LogAnalyzerWindow window = project.getUserData(LogAnalyzerWindow.KEY);
 
         if (window == null) {
-            System.out.println("DEBUG: Window not in user data, creating new instance!");
             // This shouldn't happen, but create one if needed
             window = new LogAnalyzerWindow(project);
             project.putUserData(LogAnalyzerWindow.KEY, window);
@@ -223,4 +282,5 @@ public class AnalyzeLogFileAction extends AnAction
 
         return window;
     }
+
 }
