@@ -79,13 +79,8 @@ public class AnalyzeLogFileAction extends AnAction
 
     @Override
     public void update(@NotNull AnActionEvent e) {
-        // Only show action for .log files
+        // Only show action for .log and .txt files
         VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
-//        e.getPresentation().setEnabledAndVisible(file != null && !file.isDirectory());
-//        boolean isLogFile = file != null &&
-//                !file.isDirectory() &&
-//                (file.getName().endsWith(".log") || file.getName().endsWith(".txt"));
-//        e.getPresentation().setEnabledAndVisible(isLogFile);
 
         boolean enabled = file != null &&
                 !file.isDirectory() &&
@@ -161,7 +156,8 @@ public class AnalyzeLogFileAction extends AnAction
                     results.put("security", securityResult);
 
                     // Pass the file path so Watch Mode knows what to monitor
-                    window.displayResults(results, filePath);
+                    // And also pass log entries for filtering
+                    window.displayResults(results, filePath, logEntries);
                 }
 
                 Messages.showInfoMessage(project,
@@ -233,7 +229,7 @@ public class AnalyzeLogFileAction extends AnAction
 
                     // Update UI
                     ApplicationManager.getApplication().invokeLater(() -> {
-                        window.displayResults(results, filePath);
+                        window.displayResults(results, filePath, logEntries);
                     });
                 } catch (Exception ex)
                 {
@@ -245,13 +241,13 @@ public class AnalyzeLogFileAction extends AnAction
     }
 
 
-    private LogAnalyzerWindow getLogAnalyzerWindow(Project project) {
+    private LogAnalyzerWindow getLogAnalyzerWindow(Project project)
+    {
         ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(project);
         ToolWindow toolWindow = toolWindowManager.getToolWindow("LogAnalyzer");
 
         if (toolWindow == null)
         {
-            System.out.println("DEBUG: ToolWindow 'LogAnalyzer' not found!");
             return null;
         }
 
@@ -260,7 +256,6 @@ public class AnalyzeLogFileAction extends AnAction
         Content content = toolWindow.getContentManager().getContent(0);
         if (content == null)
         {
-            System.out.println("DEBUG: No content found in tool window!");
             return null;
         }
 
@@ -274,7 +269,8 @@ public class AnalyzeLogFileAction extends AnAction
         // Try to get LogAnalyzerWindow from project user data
         LogAnalyzerWindow window = project.getUserData(LogAnalyzerWindow.KEY);
 
-        if (window == null) {
+        if (window == null)
+        {
             // This shouldn't happen, but create one if needed
             window = new LogAnalyzerWindow(project);
             project.putUserData(LogAnalyzerWindow.KEY, window);

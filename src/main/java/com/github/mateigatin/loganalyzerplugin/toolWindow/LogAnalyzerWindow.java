@@ -1,8 +1,11 @@
 package com.github.mateigatin.loganalyzerplugin.toolWindow;
 
 import com.github.mateigatin.loganalyzerplugin.actions.AnalyzeLogFileAction;
+import com.github.mateigatin.loganalyzerplugin.analyzer.*;
 import com.github.mateigatin.loganalyzerplugin.export.ExportService;
+import com.github.mateigatin.loganalyzerplugin.model.AbstractLogEntry;
 import com.github.mateigatin.loganalyzerplugin.model.AnalysisResult;
+import com.github.mateigatin.loganalyzerplugin.model.LogFilter;
 import com.github.mateigatin.loganalyzerplugin.services.LogFileWatcher;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
@@ -15,17 +18,23 @@ import com.intellij.openapi.vfs.VirtualFileWrapper;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTabbedPane;
+import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.JBUI;
 
 
 import javax.swing.*;
+import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class LogAnalyzerWindow
 {
@@ -52,6 +61,15 @@ public class LogAnalyzerWindow
     private JButton watchButton;
     private JLabel watchStatusLabel;
 
+    // filter UI fields
+    private LogFilter currentFilter = new LogFilter();
+    private java.util.List<AbstractLogEntry> allLogEntries = new java.util.ArrayList<>();
+    private JBTextField searchField;
+    private JBTextField startDateField;
+    private JBTextField endDateField;
+    private JBTextField statusCodeField;
+    private JLabel filterStatusLabel;
+
     public LogAnalyzerWindow(Project project)
     {
         this.project = project;
@@ -61,6 +79,16 @@ public class LogAnalyzerWindow
         // toolbar with export button
         JPanel toolbar = createToolbar();
         mainPanel.add(toolbar, BorderLayout.NORTH);
+
+        // Filter panel
+        JPanel filterPanel = createFilterPanel();
+        mainPanel.add(filterPanel, BorderLayout.NORTH);
+
+        // Toolbar above filter panel
+        JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.add(toolbar, BorderLayout.NORTH);
+        topPanel.add(filterPanel, BorderLayout.CENTER);
+        mainPanel.add(topPanel, BorderLayout.NORTH);
 
         // Tabbed pane
         JBTabbedPane tabbedPane = new JBTabbedPane();
@@ -85,6 +113,245 @@ public class LogAnalyzerWindow
 
         // Show welcome message
         showWelcomeMessage();
+    }
+
+    // Creating the filter panel
+    private JPanel createFilterPanel()
+    {
+        JPanel filterPanel = new JPanel();
+        filterPanel.setLayout(new BoxLayout(filterPanel, BoxLayout.Y_AXIS));
+        filterPanel.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(JBColor.GRAY),
+                "🔍 Filters",
+                TitledBorder.LEFT,
+                TitledBorder.TOP
+        ));
+
+        // Row 1: Search and Status Code
+        JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+
+        row1.add(new JLabel("Search:"));
+        searchField = new JBTextField(20);
+        searchField.setToolTipText("Search by IP, endpoint, or any keyword");
+        row1.add(searchField);
+
+        row1.add(Box.createHorizontalStrut(10));
+
+        row1.add(new JLabel("Status Code:"));
+        statusCodeField = new JBTextField(5);
+        statusCodeField.setToolTipText("Filter by HTTP status code (e.g., 200, 404)");
+        row1.add(statusCodeField);
+
+        // Row 2: Date Range
+        JPanel row2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+
+        row2.add(new JLabel("From:"));
+        startDateField = new JBTextField(15);
+        startDateField.setToolTipText("Start date (format: 2025-10-30 10:00)");
+        row2.add(startDateField);
+
+        row2.add(new JLabel("To:"));
+        endDateField = new JBTextField(15);
+        endDateField.setToolTipText("End date (format: 2025-10-30 15:00)");
+        row2.add(endDateField);
+
+        // Buttons
+        JButton applyButton = new JButton("🔍 Apply Filter");
+        applyButton.addActionListener(e -> applyFilters());
+        row2.add(applyButton);
+
+        JButton clearButton = new JButton("❌ Clear");
+        clearButton.addActionListener(e -> clearFilters());
+        row2.add(clearButton);
+
+        // Filter status label
+        filterStatusLabel = new JLabel("No filters active");
+        filterStatusLabel.setForeground(JBColor.GRAY);
+        filterStatusLabel.setFont(filterStatusLabel.getFont().deriveFont(Font.ITALIC, 11f));
+
+        JPanel row3 = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        row3.add(filterStatusLabel);
+
+        filterPanel.add(row1);
+        filterPanel.add(row2);
+        filterPanel.add(row3);
+
+        return filterPanel;
+    }
+
+    // Apply filters
+    private void applyFilters()
+    {
+        if (allLogEntries.isEmpty())
+        {
+            Messages.showWarningDialog(
+                    project,
+                    "No log entries loaded. Please analyze a file first.",
+                    "No Data"
+            );
+            return;
+        }
+
+        try
+        {
+            // Update filter from UI fields
+            currentFilter.setSearchQuery(searchField.getText().trim());
+
+            // Parse status code
+            String statusText = statusCodeField.getText().trim();
+            if (!statusText.isEmpty()) {
+                try
+                {
+                    currentFilter.setStatusCodeFilter(Integer.parseInt(statusText));
+                } catch (NumberFormatException e)
+                {
+                    Messages.showErrorDialog(
+                            project,
+                            "Invalid status code. Please enter a number (e.g., 200, 404).",
+                            "Invalid Input"
+                    );
+                    return;
+                }
+            } else
+            {
+                currentFilter.setStatusCodeFilter(null);
+            }
+
+            // Parse dates
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+            String startText = startDateField.getText().trim();
+            if (!startText.isEmpty())
+            {
+                try
+                {
+                    currentFilter.setStartDate(LocalDateTime.parse(startText, formatter));
+                } catch (DateTimeParseException e)
+                {
+                    Messages.showErrorDialog(
+                            project,
+                            "Invalid start date format. Use: yyyy-MM-dd HH:mm (e.g., 2025-10-30 10:00)",
+                            "Invalid Date"
+                    );
+                    return;
+                }
+            } else {
+                currentFilter.setStartDate(null);
+            }
+
+            String endText = endDateField.getText().trim();
+            if (!endText.isEmpty())
+            {
+                try
+                {
+                    currentFilter.setEndDate(LocalDateTime.parse(endText, formatter));
+                } catch (DateTimeParseException e)
+                {
+                    Messages.showErrorDialog(
+                            project,
+                            "Invalid end date format. Use: yyyy-MM-dd HH:mm (e.g., 2025-10-30 15:00)",
+                            "Invalid Date"
+                    );
+                    return;
+                }
+            } else
+            {
+                currentFilter.setEndDate(null);
+            }
+
+            // Apply filter
+            java.util.List<AbstractLogEntry> filteredEntries = allLogEntries.stream()
+                    .filter(currentFilter::matches)
+                    .collect(Collectors.toList());
+
+            if (filteredEntries.isEmpty())
+            {
+                Messages.showInfoMessage(
+                        project,
+                        "No log entries match the current filters.",
+                        "No Results"
+                );
+                return;
+            }
+
+            // Re-analyze with filtered data
+            reAnalyzeWithEntries(filteredEntries);
+
+            // Update status
+            filterStatusLabel.setText(String.format(
+                    "📊 Showing %d of %d entries - %s",
+                    filteredEntries.size(),
+                    allLogEntries.size(),
+                    currentFilter.toString()
+            ));
+            filterStatusLabel.setForeground(new Color(0, 120, 215));
+
+            showNotification("Filters Applied",
+                    String.format("Showing %d matching entries", filteredEntries.size()));
+
+        } catch (Exception ex) {
+            Messages.showErrorDialog(
+                    project,
+                    "Error applying filters: " + ex.getMessage(),
+                    "Filter Error"
+            );
+            ex.printStackTrace();
+        }
+    }
+
+    // Clear filters
+    private void clearFilters()
+    {
+        if (allLogEntries.isEmpty())
+        {
+            return;
+        }
+
+        // Clear UI fields
+        searchField.setText("");
+        statusCodeField.setText("");
+        startDateField.setText("");
+        endDateField.setText("");
+
+        // Reset filter
+        currentFilter = new LogFilter();
+
+        // Re-analyze with all data
+        reAnalyzeWithEntries(allLogEntries);
+
+        // Update status
+        filterStatusLabel.setText("No filters active");
+        filterStatusLabel.setForeground(JBColor.GRAY);
+
+        showNotification("Filters Cleared", "Showing all entries");
+    }
+
+    // Re-analyze with specific entries
+    private void reAnalyzeWithEntries(java.util.List<AbstractLogEntry> entries)
+    {
+        // Run all analyzers
+        Map<String, AnalysisResult> results = new HashMap<>();
+
+        TotalRequestAnalyzer totalAnalyzer = new TotalRequestAnalyzer();
+        results.put("total", totalAnalyzer.analyze(entries));
+
+        StatusCodeAnalyzer statusAnalyzer = new StatusCodeAnalyzer();
+        results.put("statusCodes", statusAnalyzer.analyze(entries));
+
+        TrafficByHourAnalyzer trafficAnalyzer = new TrafficByHourAnalyzer();
+        results.put("traffic", trafficAnalyzer.analyze(entries));
+
+        TopEndpointsAnalyzer endpointsAnalyzer = new TopEndpointsAnalyzer();
+        results.put("endpoints", endpointsAnalyzer.analyze(entries));
+
+        PerformanceAnalyzer performanceAnalyzer = new PerformanceAnalyzer();
+        results.put("performance", performanceAnalyzer.analyze(entries));
+
+        SecurityAnalyzer securityAnalyzer = new SecurityAnalyzer();
+        results.put("security", securityAnalyzer.analyze(entries));
+
+        // Update display (but don't overwrite allLogEntries)
+        displayResults(results, currentLogFilePath);
     }
 
     private JPanel createToolbar()
@@ -370,6 +637,17 @@ public class LogAnalyzerWindow
     }
 
     // ---------------------
+
+    // Overload to accept log entries
+    public void displayResults(Map<String, AnalysisResult> results, String filePath, java.util.List<AbstractLogEntry> logEntries) {
+        // Store all entries for filtering
+        this.allLogEntries = new java.util.ArrayList<>(logEntries);
+
+        // Reset filter when new file is loaded
+        clearFilters();
+
+        displayResults(results, filePath);
+    }
 
     public void displayResults(Map<String, AnalysisResult> results)
     {
